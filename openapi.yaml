@@ -1,0 +1,23 @@
+openapi: 3.0.3
+info: { title: DealPilot API, version: 1.0.0, description: Agent negotiation, TrustLayer risk checks and PayPal authorize/capture/void settlement. }
+servers: [{ url: http://localhost:3000 }]
+paths:
+  /api/deals:
+    get: { summary: List deals, responses: { '200': { description: OK } } }
+    post:
+      summary: Create a mandate, run the risk check and negotiation
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NewDeal' } } } }
+      responses: { '200': { description: Deal state } }
+  /api/deals/{id}: { get: { summary: Get a deal, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: OK } } } }
+  /api/deals/{id}/approve: { post: { summary: Approve a price above the ask-first threshold and create the PayPal order, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: OK } } } }
+  /api/deals/{id}/deliver: { post: { summary: Submit delivery evidence; mediator captures, voids or escalates, parameters: [{ $ref: '#/components/parameters/id' }], responses: { '200': { description: OK } } } }
+  /api/redteam: { post: { summary: Run a prompt-injection attack against the buyer agent, responses: { '200': { description: Attack and policy result } } } }
+  /api/audit: { get: { summary: Hash-chained audit log, responses: { '200': { description: OK } } } }
+  /api/audit/verify: { get: { summary: Verify the audit hash chain, responses: { '200': { description: OK } } } }
+components:
+  parameters: { id: { name: id, in: path, required: true, schema: { type: string } } }
+  schemas:
+    NewDeal:
+      type: object
+      required: [sellerId, item, maxTotal, askAbove]
+      properties: { sellerId: { type: string, enum: [oakline, megadeals, quickship] }, item: { type: string }, maxTotal: { type: number }, askAbove: { type: number } }
