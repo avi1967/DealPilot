@@ -1,0 +1,10 @@
+{
+  "name": "dealpilot-trustlayer",
+  "version": "1.0.0",
+  "description": "AI agents negotiate under a spending mandate; PayPal holds the funds; an AI mediator releases them only when delivery is verified.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node server.js", "dev": "node --env-file=.env server.js", "test": "node --test test/*.test.js" },
+  "dependencies": { "express": "^4.19.2" }
+}
