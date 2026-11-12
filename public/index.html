@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DealPilot: agents negotiate, PayPal holds the money, evidence releases it</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/styles/ag-grid.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/styles/ag-theme-quartz.css">
+<style>
+:root{--ink:#12202f;--paper:#f2f4f1;--card:#fff;--line:#d5dad4;--muted:#5b6770;--blue:#0b4ea2;--held:#b87a0c;--ok:#1b7a4a;--bad:#b42318;--r:6px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Public Sans",system-ui,sans-serif}
+h1,h2{font-family:"Bricolage Grotesque",system-ui,sans-serif;margin:0}
+header{padding:22px 28px 10px;display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between}
+h1{font-size:30px;letter-spacing:-.5px}
+header p{margin:2px 0 0;color:var(--muted);max-width:60ch}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--card);padding:3px 10px;border-radius:99px;font-size:13px}
+main{display:grid;grid-template-columns:minmax(280px,340px) 1fr;gap:18px;padding:10px 28px 28px;align-items:start}
+@media(max-width:860px){main{grid-template-columns:1fr;padding:10px 14px}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+h2{font-size:18px;margin-bottom:10px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 3px}
+input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);font:inherit;background:#fff;color:var(--ink)}
+button,.btn{font:inherit;font-weight:600;padding:9px 14px;border-radius:var(--r);border:1px solid var(--ink);background:var(--ink);color:#fff;cursor:pointer;text-decoration:none;display:inline-block}
+button.ghost{background:#fff;color:var(--ink)}
+button:disabled{opacity:.5;cursor:wait}
+button:focus-visible,input:focus-visible,select:focus-visible,.btn:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.rail{display:flex;gap:0;margin:0 0 14px;padding:0;list-style:none}
+.rail li{flex:1;padding:8px 6px 8px 10px;font-size:13px;border-top:4px solid var(--line);color:var(--muted)}
+.rail li.done{border-color:var(--ink);color:var(--ink)}
+.rail li.held{border-color:var(--held);color:var(--held);font-weight:600}
+.rail li.ok{border-color:var(--ok);color:var(--ok);font-weight:600}
+.rail li.bad{border-color:var(--bad);color:var(--bad);font-weight:600}
+.status{font-weight:600;margin:4px 0 8px}
+.risk{border-left:4px solid var(--line);padding:6px 12px;margin:10px 0;background:#f8f9f7}
+.risk.high{border-color:var(--bad)}.risk.medium{border-color:var(--held)}.risk.low{border-color:var(--ok)}
+.chat{display:flex;flex-direction:column;gap:6px;margin:10px 0;max-height:300px;overflow:auto}
+.msg{max-width:80%;padding:6px 10px;border-radius:var(--r);background:#eef1ee}
+.msg.buyer{align-self:flex-end;background:#dbe8fb}
+.msg small{display:block;color:var(--muted)}
+.note{color:var(--muted);font-size:13px}
+.err{color:var(--bad)}
+.full{grid-column:1/-1}
+.grid{height:300px;width:100%}
+.red{border-left:4px solid var(--bad);padding:6px 12px;margin-top:12px;background:#fdf3f2;font-size:14px}
+code{background:#eef1ee;padding:1px 5px;border-radius:4px;font-size:13px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>DealPilot</h1>
+    <p>Two AI agents negotiate within a spending mandate. PayPal holds the money. It is released only when delivery is verified.</p>
+  </div>
+  <div class="chips"><span class="chip" id="chipLlm">AI: checking</span><span class="chip" id="chipPp">PayPal sandbox: checking</span></div>
+</header>
+<main>
+  <section class="card" aria-labelledby="mh">
+    <h2 id="mh">Your mandate</h2>
+    <label for="item">What the agent may buy</label><input id="item" value="standing desk">
+    <label for="max">Maximum it may ever pay (USD)</label><input id="max" type="number" value="400">
+    <label for="ask">Ask me first above (USD)</label><input id="ask" type="number" value="300">
+    <label for="seller">Seller to negotiate with</label><select id="seller"></select>
+    <p class="note" id="sellerNote"></p>
+    <div class="row"><button id="go">Start negotiation</button><button class="ghost" id="red">Run red-team attack</button></div>
+    <div id="redOut"></div>
+  </section>
+
+  <section class="card" aria-live="polite">
+    <h2>Deal</h2>
+    <ol class="rail" id="rail"></ol>
+    <div id="deal"><p class="note">Set a mandate and start a negotiation. Every decision is written to the audit log below.</p></div>
+  </section>
+
+  <section class="card full">
+    <h2>Audit log <button class="ghost" id="verify" style="float:right;padding:4px 10px">Verify hash chain</button></h2>
+    <p class="note" id="verifyOut">Each entry includes the hash of the one before it, so edits to history are detectable.</p>
+    <div id="auditGrid" class="ag-theme-quartz grid"></div>
+  </section>
+  <section class="card full">
+    <h2>Cases</h2>
+    <div id="dealsGrid" class="ag-theme-quartz grid" style="height:220px"></div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/ag-grid-community@32.3.3/dist/ag-grid-community.min.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let deal = null, sellers = [], auditGrid, dealsGrid;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { method: opts.method || 'GET', headers: { 'content-type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
+}
+const STEPS = ['Mandate', 'Risk check', 'Negotiation', 'Funds held', 'Outcome'];
+function rail(d) {
+  const s = d?.status; let n = d ? 1 : 0, cls = {};
+  if (d?.risk) n = 2;
+  if (s === 'risk_blocked') { n = 2; cls[1] = 'bad'; }
+  else if (d?.transcript?.length) n = 3;
+  if (['needs_approval', 'awaiting_payment'].includes(s)) n = 3;
+  if (s === 'no_deal') cls[2] = 'bad';
+  if (s === 'escrow') { n = 4; cls[3] = 'held'; }
+  if (s === 'released') { n = 5; cls[3] = 'done'; cls[4] = 'ok'; }
+  if (['voided', 'escalated'].includes(s)) { n = 5; cls[3] = 'done'; cls[4] = 'bad'; }
+  $('#rail').innerHTML = STEPS.map((t, i) => `<li class="${cls[i] || (i < n ? 'done' : '')}">${t}</li>`).join('');
+}
+const LABEL = { risk_blocked: 'Blocked before negotiation', no_deal: 'No deal reached', needs_approval: 'Agreed. Waiting for your approval', awaiting_payment: 'Waiting for you to authorize in PayPal', escrow: 'Funds are held by PayPal (authorized, not captured)', released: 'Payment released to the seller', voided: 'Authorization voided: you were not charged', escalated: 'Escalated to a human', payment_error: 'PayPal error', cancelled: 'Cancelled at PayPal' };
+
+function render(d) {
+  deal = d; rail(d); if (!d) return;
+  let h = `<div class="status">${LABEL[d.status] || d.status}${d.price ? ` · $${d.price}` : ''}</div>`;
+  h += `<div class="note">${esc(d.seller.name)}: ${esc(d.seller.title)}</div>`;
+  if (d.risk) h += `<div class="risk ${d.risk.level}"><b>TrustLayer: ${d.risk.level} risk (${d.risk.score}/100)</b><br>${esc(d.risk.explanation)}</div>`;
+  if (d.transcript.length) h += '<div class="chat">' + d.transcript.map((m) => `<div class="msg ${m.from}"><small>${m.from}${m.action ? ' · ' + m.action : ''}${m.price ? ' · $' + m.price : ''}</small>${esc(m.message)}</div>`).join('') + '</div>';
+  if (d.mediation) h += `<div class="risk ${d.status === 'released' ? 'low' : 'high'}"><b>Mediator: ${d.mediation.verdict}</b><br>${esc(d.mediation.reasoning)}<br><span class="note">${Object.entries(d.mediation.checks).map(([k, v]) => (v ? '✓ ' : '✗ ') + k).join('  ')}</span><br><span class="note">Photo check: ${esc(d.mediation.photoSource)}${d.mediation.vision?.notes ? ' · ' + esc(d.mediation.vision.notes) : ''}${d.mediation.vision?.reason ? ' · ' + esc(d.mediation.vision.reason) : ''}</span></div>`;
+  if (d.error) h += `<p class="err">${esc(d.error)}</p>`;
+  h += '<div class="row">';
+  if (d.status === 'needs_approval') h += `<button id="approve">Approve $${d.price}</button>`;
+  if (d.status === 'awaiting_payment') h += `<a class="btn" href="${esc(d.approveUrl)}">Authorize in PayPal sandbox</a>`;
+  if (d.status === 'escrow') h += `<div style="width:100%"><label for="photo">Evidence photo (optional). Without one, the demo uses the seller's simulated photo label.</label><input type="file" id="photo" accept="image/*"></div><button id="deliver">Seller submits delivery evidence</button>`;
+  h += '</div>';
+  $('#deal').innerHTML = h;
+  $('#approve')?.addEventListener('click', () => act(() => api(`/api/deals/${d.id}/approve`, { method: 'POST' })));
+  $('#deliver')?.addEventListener('click', () => act(async () => { const f = $('#photo')?.files[0]; return api(`/api/deals/${d.id}/deliver`, { method: 'POST', body: f ? { image: { mime: 'image/jpeg', base64: await toJpeg(f) } } : undefined }); }));
+}
+async function toJpeg(file) { const bmp = await createImageBitmap(file); const k = Math.min(1, 1024 / Math.max(bmp.width, bmp.height)); const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.8).split(',')[1]; }
+async function act(fn) { document.querySelectorAll('button').forEach((b) => (b.disabled = true)); try { render(await fn()); } catch (e) { $('#deal').innerHTML = `<p class="err">${esc(e.message)}</p>`; } document.querySelectorAll('button').forEach((b) => (b.disabled = false)); refresh(); }
+
+async function refresh() {
+  auditGrid.setGridOption('rowData', (await api('/api/audit')).map((e) => ({ seq: e.seq, time: e.ts.slice(11, 19), deal: e.dealId, event: e.type, detail: JSON.stringify(e.detail), hash: e.hash.slice(0, 10) })));
+  dealsGrid.setGridOption('rowData', (await api('/api/deals')).map((d) => ({ id: d.id, seller: d.seller.name, status: d.status, price: d.price ?? '', risk: d.risk ? d.risk.score : '', verdict: d.mediation?.verdict ?? '' })));
+}
+$('#go').onclick = () => act(() => api('/api/deals', { method: 'POST', body: { sellerId: $('#seller').value, item: $('#item').value, maxTotal: $('#max').value, askAbove: $('#ask').value } }));
+$('#red').onclick = async () => {
+  const r = await api('/api/redteam', { method: 'POST' });
+  $('#redOut').innerHTML = `<div class="red"><b>Attack message</b><br><code>${esc(r.attack)}</code><br><br><b>Agent (${r.mode}) replied:</b> ${esc(r.agent.action || '')} ${r.agent.price ? '$' + esc(r.agent.price) : esc(r.agent.error || '')}<br><b>If the agent had been fully hijacked and tried $550:</b> ${r.forced.allowed ? 'allowed' : 'BLOCKED by the policy engine'} <code>${esc(r.forced.violations.join(', '))}</code></div>`;
+  refresh();
+};
+$('#verify').onclick = async () => { const v = await api('/api/audit/verify'); $('#verifyOut').textContent = v.ok ? `Chain intact: ${v.length} entries verified.` : `Tampering detected at entry ${v.brokenAt}.`; };
+$('#seller').onchange = () => { const s = sellers.find((x) => x.id === $('#seller').value); $('#sellerNote').textContent = `Listed at $${s.listPrice}. Account age: ${s.accountAgeDays} days.`; };
+
+(async () => {
+  auditGrid = agGrid.createGrid($('#auditGrid'), { columnDefs: [{ field: 'seq', width: 80 }, { field: 'time', width: 100 }, { field: 'deal', width: 150 }, { field: 'event', width: 210 }, { field: 'detail', flex: 1, tooltipField: 'detail' }, { field: 'hash', width: 120 }], defaultColDef: { sortable: true, filter: true, resizable: true }, rowData: [] });
+  dealsGrid = agGrid.createGrid($('#dealsGrid'), { columnDefs: [{ field: 'id' }, { field: 'seller', flex: 1 }, { field: 'status' }, { field: 'price' }, { field: 'risk' }, { field: 'verdict' }], defaultColDef: { sortable: true, filter: true, resizable: true }, rowData: [] });
+  const cfg = await api('/api/config');
+  $('#chipLlm').textContent = cfg.llm ? 'AI: ' + cfg.model : 'AI: offline heuristic (set LLM_API_KEY)';
+  $('#chipPp').textContent = cfg.paypalConfigured ? 'PayPal: sandbox connected' : 'PayPal: credentials missing';
+  sellers = await api('/api/sellers');
+  $('#seller').innerHTML = sellers.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join(''); $('#seller').onchange();
+  rail(null); await refresh();
+  const id = new URLSearchParams(location.search).get('deal');
+  if (id) { try { render(await api('/api/deals/' + id)); } catch {} history.replaceState({}, '', '/'); }
+})();
+</script>
+</body>
+</html>
